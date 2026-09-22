@@ -12,7 +12,7 @@ scene.background = new THREE.Color(0x07111f);
 const camera = new THREE.PerspectiveCamera(
     60, window.innerWidth / window.innerHeight, 0.1, 1500
 );
-camera.position.set(3, 4, 8); // Punto de spawn en zona de calle abierta del nuevo modelo de ciudad.
+camera.position.set(3, 6, 10); // Punto de spawn en zona de calle abierta; elevada para no quedar tapada por la pirámide de cajas (z=4, entre cámara y personaje).
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -240,10 +240,16 @@ function createBox(x, y, z, sx = 1, sy = 1, sz = 1, mass = 3) {
     dynamicObjects.push({ mesh, body });
 }
 
-// Pirámide de cajas.
+// Pirámide de cajas, centrada sobre la misma X en la que aparece el personaje.
+const PYRAMID_CENTER_X = 3;
+const PYRAMID_Z = 4;
+const BOX_SPACING = 1.1;
+
 for (let level = 0; level < 3; level++) {
-    for (let i = 0; i < 3 - level; i++) {
-        createBox(3 + i * 1.1 + level * 0.55, 0.55 + level, 4, 1, 1, 1, 4);
+    const boxesInLevel = 3 - level;
+    const rowStartX = PYRAMID_CENTER_X - ((boxesInLevel - 1) * BOX_SPACING) / 2;
+    for (let i = 0; i < boxesInLevel; i++) {
+        createBox(rowStartX + i * BOX_SPACING, 0.55 + level, PYRAMID_Z, 1, 1, 1, 4);
     }
 }
 
