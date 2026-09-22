@@ -12,7 +12,7 @@ scene.background = new THREE.Color(0x07111f);
 const camera = new THREE.PerspectiveCamera(
     60, window.innerWidth / window.innerHeight, 0.1, 1500
 );
-camera.position.set(-4, 4, 8); // Punto de spawn en zona de calle abierta (x=0 queda bajo un techo del modelo).
+camera.position.set(3, 4, 8); // Punto de spawn en zona de calle abierta del nuevo modelo de ciudad.
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -36,31 +36,51 @@ const physicsWorld = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
 const loader = new GLTFLoader();
 const timer = new THREE.Timer();
 
-function createStaticTrimesh(mesh) {
-    const geometry = mesh.geometry;
-    const position = geometry.attributes.position;
-    if (!position) return;
+// La ciudad trae miles de meshes modulares; crear un collider trimesh por
+// mesh sería demasiado lento (broad-phase de Rapier + tiempo de build), así
+// que se fusiona toda la geometría en un único trimesh estático.
+function buildCityCollider(city) {
+    let vertexTotal = 0;
+    let indexTotal = 0;
+    const meshes = [];
 
-    mesh.updateWorldMatrix(true, false);
-    const v = new Float32Array(position.count * 3);
+    city.traverse((child) => {
+        if (!child.isMesh) return;
+        const position = child.geometry.attributes.position;
+        if (!position) return;
+        meshes.push(child);
+        vertexTotal += position.count;
+        indexTotal += child.geometry.index ? child.geometry.index.count : position.count;
+    });
+
+    const vertices = new Float32Array(vertexTotal * 3);
+    const indices = new Uint32Array(indexTotal);
     const point = new THREE.Vector3();
+    let vertexOffset = 0;
+    let indexOffset = 0;
 
-    for (let i = 0; i < position.count; i++) {
-        point.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld);
-        v[i * 3] = point.x;
-        v[i * 3 + 1] = point.y;
-        v[i * 3 + 2] = point.z;
+    for (const mesh of meshes) {
+        mesh.updateWorldMatrix(true, false);
+        const position = mesh.geometry.attributes.position;
+        const baseVertex = vertexOffset;
+
+        for (let i = 0; i < position.count; i++) {
+            point.fromBufferAttribute(position, i).applyMatrix4(mesh.matrixWorld);
+            vertices[vertexOffset * 3] = point.x;
+            vertices[vertexOffset * 3 + 1] = point.y;
+            vertices[vertexOffset * 3 + 2] = point.z;
+            vertexOffset++;
+        }
+
+        if (mesh.geometry.index) {
+            const idx = mesh.geometry.index.array;
+            for (let i = 0; i < idx.length; i++) indices[indexOffset++] = idx[i] + baseVertex;
+        } else {
+            for (let i = 0; i < position.count; i++) indices[indexOffset++] = i + baseVertex;
+        }
     }
 
-    let indices;
-    if (geometry.index) {
-        indices = new Uint32Array(geometry.index.array);
-    } else {
-        indices = new Uint32Array(position.count);
-        for (let i = 0; i < position.count; i++) indices[i] = i;
-    }
-
-    physicsWorld.createCollider(RAPIER.ColliderDesc.trimesh(v, indices));
+    physicsWorld.createCollider(RAPIER.ColliderDesc.trimesh(vertices, indices));
 }
 
 let cityReady = false;
@@ -71,14 +91,14 @@ loader.load('./assets/models/city/scene.gltf', (gltf) => {
         if (!child.isMesh) return;
         child.castShadow = true;
         child.receiveShadow = true;
-        createStaticTrimesh(child);
     });
+    buildCityCollider(city);
     scene.add(city);
-    cityReady = true; // Los colliders de la ciudad ya existen; recién ahora es seguro aplicar física al personaje.
+    cityReady = true; // El collider de la ciudad ya existe; recién ahora es seguro aplicar física al personaje.
 });
 
 const characterBody = physicsWorld.createRigidBody(
-    RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(-4, 1.1, 0)
+    RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(3, 1.1, 0)
 );
 const characterCollider = physicsWorld.createCollider(
     RAPIER.ColliderDesc.capsule(0.8, 0.35),
@@ -223,7 +243,7 @@ function createBox(x, y, z, sx = 1, sy = 1, sz = 1, mass = 3) {
 // Pirámide de cajas.
 for (let level = 0; level < 3; level++) {
     for (let i = 0; i < 3 - level; i++) {
-        createBox(3 + i * 1.1 + level * 0.55, 0.55 + level, -4, 1, 1, 1, 4);
+        createBox(3 + i * 1.1 + level * 0.55, 0.55 + level, 4, 1, 1, 1, 4);
     }
 }
 
